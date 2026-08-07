@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Ebook libraries hold copyrighted book text — never commit them.
+.ebooks/
+*.epub
+*.mobi
+*.azw3
+*.pdf
