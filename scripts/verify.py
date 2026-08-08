@@ -79,7 +79,7 @@ def main():
     manifest_path = root / "manifest.json"
     if not manifest_path.exists():
         sys.exit(f"No manifest.json in {root} — run ingest.py first.")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     # Fold the whole book once; quotes are checked against all of it rather than
     # just their own chapter, since a digest may legitimately quote a callback.
@@ -89,7 +89,7 @@ def main():
     missing, checked, bad = [], 0, []
     for ch in manifest["chapters"]:
         digest = root / "index" / f"{ch['id']:04d}.md"
-        if not digest.exists() or len(digest.read_text().strip()) < 80:
+        if not digest.exists() or len(digest.read_text(encoding="utf-8").strip()) < 80:
             missing.append(ch)
             continue
         for quote in extract_quotes(digest.read_text(encoding="utf-8")):
@@ -102,7 +102,8 @@ def main():
         "slug": manifest["slug"],
         "chapters_total": len(manifest["chapters"]),
         "chapters_missing_digest": [{"id": c["id"], "title": c["title"]} for c in missing],
-        "book_summary_present": book_md.exists() and len(book_md.read_text().strip()) > 200,
+        "book_summary_present": (book_md.exists()
+                                 and len(book_md.read_text(encoding="utf-8").strip()) > 200),
         "quotes_checked": checked,
         "quotes_unverified": bad,
         "ok": not missing and not bad and book_md.exists(),
