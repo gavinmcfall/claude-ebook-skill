@@ -24,6 +24,7 @@ import tempfile
 import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 DC = "{http://purl.org/dc/elements/1.1/}"
@@ -264,8 +265,15 @@ def split_oversized(chapters, max_tokens):
 # -------------------------------------------------------------------- readers
 
 def resolve(base_dir, href):
-    """Resolve an href against the directory of the document that contains it."""
-    href = href.split("#")[0]
+    """Resolve an href against the directory of the document that contains it.
+
+    Hrefs are URIs, so they must be percent-decoded before they can be matched
+    against zip entry names. Skipping this looks harmless until a book contains
+    a filename with a reserved character: the ToC then says
+    `CR%21A6VK..._split_000.html` while the spine says `CR!A6VK..._split_000.html`,
+    nothing matches, and the whole table of contents is silently discarded.
+    """
+    href = unquote(href.split("#")[0])
     if not href:
         return None
     return posixpath.normpath(posixpath.join(base_dir, href)).lstrip("./")
@@ -357,7 +365,7 @@ def load_toc(z, base, items):
         resolved = []
         for depth, title, ref in entries:
             if file := resolve(doc_dir, ref):
-                anchor = ref.split("#", 1)[1] if "#" in ref else None
+                anchor = unquote(ref.split("#", 1)[1]) if "#" in ref else None
                 resolved.append((depth, title, file, anchor))
         if resolved:
             return resolved
