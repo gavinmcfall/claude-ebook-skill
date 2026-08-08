@@ -99,11 +99,34 @@ def extract_quotes(digest_text):
     return cleaned
 
 
+def check_loose_quotes(quotes, full, labels=None):
+    """Check quotes that came from somewhere other than the index.
+
+    A finished review is the highest-stakes place a quote can appear, and it is
+    the one place the index's own gate never sees. This makes the same check
+    available to anything: a draft review, a blurb, a social post.
+    """
+    labels = labels or [""] * len(quotes)
+    bad = []
+    for quote, label in zip(quotes, labels):
+        if not quote_present(quote, full):
+            bad.append({"quote": quote, "where": label})
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("book_dir")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--quiet", action="store_true", help="only print problems")
+    ap.add_argument("--quote", action="append", metavar="TEXT",
+                    help="check one quote against the book; repeatable")
+    ap.add_argument("--quotes-from", metavar="FILE",
+                    help="check every markdown blockquote line in FILE "
+                         "(use on a draft review before it goes out)")
+    ap.add_argument("--inline", action="store_true",
+                    help="with --quotes-from, also check quoted spans inside "
+                         "prose, which is how reviews actually quote")
     args = ap.parse_args()
 
     root = Path(args.book_dir).expanduser()
@@ -116,6 +139,66 @@ def main():
     # just their own chapter, since a digest may legitimately quote a callback.
     full = fold("\n".join((root / c["file"]).read_text(encoding="utf-8")
                           for c in manifest["chapters"]))
+
+    # Ad-hoc checking short-circuits the index audit: the caller is asking about
+    # specific text, not about whether the index is complete.
+    if args.quote or args.quotes_from:
+        quotes, labels = list(args.quote or []), ["--quote"] * len(args.quote or [])
+        if args.quotes_from:
+            src = Path(args.quotes_from).expanduser()
+            text = src.read_text(encoding="utf-8")
+            for n, line in enumerate(text.split("\n"), 1):
+                if m := QUOTE_LINE.match(line):
+                    q = ATTRIBUTION.sub("", m.group(1)).strip().strip('"“”‘’\'').strip()
+                    if len(q.split()) >= 3:
+                        quotes.append(q)
+                        labels.append(f"{src.name}:{n}")
+
+            if args.inline:
+                # Reviews quote inside sentences, not as blockquotes, so the
+                # blockquote-only pass finds nothing in a real review. The
+                # five-word floor is what separates a quotation from a scare
+                # quote: "damaged" is the reviewer's word, a whole clause is the
+                # author's. Below that the false-positive rate makes the check
+                # worse than useless.
+                for n, line in enumerate(text.split("\n"), 1):
+                    if QUOTE_LINE.match(line):
+                        continue  # already taken by the blockquote pass
+                    for span in re.findall(r'["“]([^"“”]{12,400})["”]', line):
+                        span = span.strip().strip("*_")
+                        if len(span.split()) >= 5:
+                            quotes.append(span)
+                            labels.append(f"{src.name}:{n} (inline)")
+
+        bad = check_loose_quotes(quotes, full, labels)
+        # Inline hits are reported separately and never fail the run. Quotation
+        # marks do many jobs besides quotation - scare quotes, a paraphrased
+        # trope, a cited heading - and no heuristic tells them apart. Treating
+        # those as errors would train the reader to ignore the output, which
+        # costs more than the misses it catches.
+        errors = [b for b in bad if "(inline)" not in b["where"]]
+        candidates = [b for b in bad if "(inline)" in b["where"]]
+
+        if args.json:
+            print(json.dumps({"checked": len(quotes), "unverified": errors,
+                              "inline_candidates": candidates}, indent=2))
+        else:
+            print(f"{len(quotes)} quotes checked.")
+            if errors:
+                print(f"\n{len(errors)} NOT FOUND in the book:")
+                for b in errors:
+                    print(f"  {b['where']}: {b['quote'][:96]}")
+                print("\n  A quoted line that cannot be matched is either "
+                      "misremembered or altered.\n  Do not publish it without "
+                      "checking the text.")
+            if candidates:
+                print(f"\n{len(candidates)} inline span(s) to eyeball - these are "
+                      f"often not quotations at all:")
+                for b in candidates:
+                    print(f"  {b['where']}: {b['quote'][:96]}")
+            if not errors and not candidates:
+                print("All found in the source text.")
+        return 1 if errors else 0
 
     missing, checked, bad = [], 0, []
     for ch in manifest["chapters"]:
