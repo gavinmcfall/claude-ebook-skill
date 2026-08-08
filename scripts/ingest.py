@@ -295,6 +295,38 @@ def parse_ncx(raw):
     return out
 
 
+FONT_EXT = (".ttf", ".otf", ".woff", ".woff2", ".eot")
+
+
+def encryption_scope(z):
+    """Classify META-INF/encryption.xml as font obfuscation or real encryption.
+
+    Publishers obfuscate embedded fonts using the very same encryption.xml
+    mechanism as DRM, so the file's presence proves nothing on its own — it is
+    extremely common in books that read perfectly well. What matters is *what*
+    is listed: if every encrypted resource is a font, the text is plain and the
+    book parses normally. Treating the file itself as a DRM signal rejects a
+    large slice of an ordinary library for no reason.
+
+    Returns (scope, non_font_uris) where scope is "none", "fonts" or "content".
+    """
+    try:
+        raw = z.read("META-INF/encryption.xml")
+    except KeyError:
+        return "none", []
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return "unknown", []
+
+    uris = [el.get("URI", "") for el in root.iter()
+            if el.tag.endswith("CipherReference") and el.get("URI")]
+    if not uris:
+        return "none", []
+    non_font = [u for u in uris if not u.lower().split("?")[0].endswith(FONT_EXT)]
+    return ("content" if non_font else "fonts"), non_font
+
+
 def load_toc(z, base, items):
     """Return [(depth, title, file, anchor)] from the nav document or the NCX.
 
@@ -445,6 +477,12 @@ def guess_spine_title(raw, text):
 
 def read_epub(path):
     with zipfile.ZipFile(path) as z:
+        scope, encrypted = encryption_scope(z)
+        if scope == "content":
+            sys.exit(f"{path.name} has encrypted content ({encrypted[0]}), so its "
+                     f"text can't be read.\nThis looks like DRM rather than the "
+                     f"font obfuscation that is normally harmless.")
+
         container = ET.fromstring(z.read("META-INF/container.xml"))
         opf_path = container.find(".//c:rootfile", NS).get("full-path")
         base = posixpath.dirname(opf_path)

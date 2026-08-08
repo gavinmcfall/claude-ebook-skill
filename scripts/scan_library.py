@@ -27,7 +27,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ingest import DC, NS, load_toc, resolve  # noqa: E402
+from ingest import DC, NS, encryption_scope, load_toc, resolve  # noqa: E402
 
 NATIVE = {".epub"}
 PLAINTEXT = {".txt", ".md", ".html", ".htm", ".xhtml"}
@@ -82,12 +82,14 @@ def deep_dominance(z, spine, toc):
 def survey_epub(path, deep=False):
     info = {"format": "epub"}
     with zipfile.ZipFile(path) as z:
-        names = set(z.namelist())
-        if "META-INF/encryption.xml" in names:
-            # Font obfuscation uses this too, so it's a hint rather than proof.
+        scope, encrypted = encryption_scope(z)
+        if scope == "content":
             info["verdict"] = "drm"
-            info["note"] = "encryption.xml present — may be DRM or obfuscated fonts"
+            info["note"] = f"encrypted content, e.g. {encrypted[0]}"
             return info
+        if scope == "fonts":
+            # Extremely common and entirely harmless — the text itself is plain.
+            info["note"] = "font obfuscation only; text readable"
 
         sizes = {i.filename: i.file_size for i in z.infolist()}
         container = ET.fromstring(z.read("META-INF/container.xml"))
