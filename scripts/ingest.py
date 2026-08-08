@@ -627,16 +627,24 @@ def detect_mode(chapters):
     dialogue_ratio = sum(bool(speech.search(p)) for p in paras) / len(paras)
 
     titles = " ".join((t or "") for t, _ in chapters).lower()
-    scholarly = [w for w in ("bibliography", "references", "endnotes", "appendix",
-                             "index", "notes", "acknowledgments") if w in titles]
+    # A bibliography is near-conclusive: novels don't cite sources. Appendices,
+    # glossaries and indexes are weaker, since epic fantasy carries them too.
+    strong = [w for w in ("bibliography", "references", "works cited",
+                          "endnotes", "further reading") if w in titles]
+    weak = [w for w in ("notes", "acknowledgments", "acknowledgements",
+                        "appendix", "glossary", "index") if w in titles]
 
-    if dialogue_ratio >= 0.12 and len(scholarly) < 3:
+    if strong:
+        # Narrative nonfiction quotes its sources constantly, so dialogue
+        # density alone reads it as a novel. The citation apparatus doesn't lie.
+        mode = "nonfiction"
+    elif dialogue_ratio >= 0.12:
         mode = "fiction"
     elif dialogue_ratio < 0.05:
         mode = "nonfiction"
     else:
         mode = "fiction" if dialogue_ratio >= 0.08 else "nonfiction"
-    return mode, round(dialogue_ratio, 3), scholarly
+    return mode, round(dialogue_ratio, 3), strong + weak
 
 
 def pack_batches(chapters, budget):

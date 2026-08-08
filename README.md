@@ -123,8 +123,17 @@ spanning multiple files, stub-ToC fallback, plain-text heading detection, and a
 full index of a 110k-word novel where all 252 extracted quotes verified against
 the source.
 
+Scanning a real 778-EPUB library classifies 710 as `toc-ok` and 65 as needing the
+spine fallback, with no parse errors. That library also shook out four bugs, all
+fixed: `encryption.xml` was read as DRM when it usually just marks obfuscated
+fonts (35 books wrongly refused); ToC hrefs weren't percent-decoded, so a book
+with `!` in its filenames silently lost its entire ToC (9 books); narrative
+nonfiction was misread as fiction because it quotes sources constantly; and index
+files used the platform default encoding, which breaks on Windows.
+
 Not yet exercised: the MOBI and PDF paths, the nonfiction digest template against
-real nonfiction, and `--exact` token counting via the
+real nonfiction (detection works — the template itself hasn't been run), and
+`--exact` token counting via the
 [count_tokens API](https://platform.claude.com/docs/en/build-with-claude/token-counting).
 
 Book text and indexes live in `~/.ebook-library` by default — outside the repo,
