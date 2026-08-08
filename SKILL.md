@@ -103,10 +103,23 @@ before indexing. If they look wrong, say so rather than presenting a clean
 structure that isn't there — and consider converting to EPUB first, since
 `ebook-convert` will usually synthesise a real ToC.
 
-Check `mode` in the manifest and sanity-check it against the opening pages. The
-detector keys on dialogue density, which is reliable for novels and essays but
-can misread memoir, narrative nonfiction, or heavily-quoted interviews. It is a
-starting guess, not a verdict — override it if the prose says otherwise.
+Check `mode` in the manifest and sanity-check it against the opening pages. A
+bibliography settles it outright, since novels don't cite sources; otherwise the
+detector keys on dialogue density, which can misread memoir or heavily-quoted
+interviews. It is a starting guess, not a verdict — override it if the prose says
+otherwise.
+
+## Reading in progress
+
+Ask whether the reader has finished the book before surfacing anything. If they
+are partway through, that changes every downstream step: `book.md` is a
+whole-book synthesis and is the single most spoiling artifact here, so don't
+generate or quote it for someone mid-read.
+
+Each digest carries a `Spoiler level`, and digests are numbered in reading order,
+so answering up to a point is straightforward — read only digests at or before
+where they are. Recaps, "who is X again", and craft observations all work fine
+mid-read. A full review and gap report do not: they assume a finished book.
 
 ### 2. Index (parallel subagents)
 
@@ -125,7 +138,15 @@ A workable subagent prompt:
 > write a digest to `index/0012.md` … `index/0018.md`.
 > Read the chapters in order; earlier ones give you context for later ones.
 > Quote only text you can see in the file, copied character-for-character.
-> Return one line: how many digests you wrote. Do not return their contents.
+> Return one line: how many digests you wrote, and nothing about what happens in
+> them — no plot events, names, reveals, or chapter summaries. Your reply is
+> relayed to the reader, who may be partway through the book.
+
+That last sentence is load-bearing, and "do not return their contents" is not a
+substitute for it. Subagents reliably honour the instruction for the digest files
+and then put the reveals in the summary line instead, because a summary doesn't
+feel like "contents". The return channel is the one path that reaches the reader,
+so the constraint has to name plot detail explicitly.
 
 Chapters stay in reading order within a batch deliberately — a digest written
 without knowing what just happened tends to miss callbacks and reversals, which
