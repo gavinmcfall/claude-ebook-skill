@@ -26,9 +26,14 @@ from pathlib import Path
 # template asks for. Anything else in the digest is treated as paraphrase.
 QUOTE_LINE = re.compile(r"^\s*>\s*(.+?)\s*$")
 # Anchored, with a bounded tail so a trailing "— ch 12" is stripped but an em-dash
-# inside the quoted prose is not treated as the start of an attribution.
+# inside the quoted prose is not treated as the start of an attribution. Named
+# sections matter as much as numbered ones: a prologue is cited as "ch prologue",
+# and demanding a digit there leaves the label glued to the quote, which then
+# fails against a source that of course never contained it.
 ATTRIBUTION = re.compile(
-    r"\s*[—–-]{1,2}\s*(?:ch(?:apter)?|loc|p{1,2})\.?\s*\d+[^—–]{0,24}$", re.I)
+    r"\s*[—–-]{1,2}\s*(?:ch(?:apter)?|loc|pp?)\.?\s*"
+    r"(?:\d+|prologue|epilogue|interlude|intro(?:duction)?|preface|foreword)"
+    r"[^—–]{0,24}$", re.I)
 
 
 def fold(text):
@@ -45,6 +50,32 @@ def fold(text):
     text = re.sub(r"[^\w\s]", "", text)      # punctuation varies harmlessly
     text = re.sub(r"\s+", " ", text)
     return text.strip().lower()
+
+
+def quote_present(quote, folded_source):
+    """Check a quote against the book, allowing an ellipsis to mark elided text.
+
+    The digest template permits cutting the middle out of a long passage, so a
+    quote can be several fragments rather than one span. Treating it as a single
+    contiguous string makes every legitimately elided quote fail.
+
+    Each fragment must appear, and they must appear *in order* — otherwise a
+    quote stitched together from unrelated parts of the book would pass, which
+    is a worse failure than the one being fixed. Splitting happens before
+    folding, since folding strips the punctuation the split relies on.
+    """
+    parts = [fold(p) for p in re.split(r"\.{3}|…", quote)]
+    parts = [p for p in parts if len(p.split()) >= 2]
+    if not parts:
+        return True
+
+    pos = 0
+    for part in parts:
+        found = folded_source.find(part, pos)
+        if found < 0:
+            return False
+        pos = found + len(part)
+    return True
 
 
 def extract_quotes(digest_text):
@@ -94,7 +125,7 @@ def main():
             continue
         for quote in extract_quotes(digest.read_text(encoding="utf-8")):
             checked += 1
-            if fold(quote) not in full:
+            if not quote_present(quote, full):
                 bad.append({"chapter": ch["id"], "title": ch["title"], "quote": quote})
 
     book_md = root / "index" / "book.md"
